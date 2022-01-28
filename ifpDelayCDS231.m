@@ -1,6 +1,6 @@
 %% Code to play with IFPs, Instability, and Delays
 %% Initialize parameters
-n=1; % Number of states (may encounter stability issues for n > 2)
+n=1; % Number of states (start with scalar)
 % Initialize state matrices and useful placeholders
 dummyI=eye(n);
 % Check delays up to this many steps
@@ -21,8 +21,13 @@ for delInd = 1:maxDelay
     for stackInd = 1:maxDelay
         aStack = blkdiag(aStack,dummyI);
     end
+    ringTmp = dummyI(:,[2:n 1]);
+    ringStructure=(dummyI+ringTmp+ringTmp');
+    numNeighbors=sum(ringStructure(:,1));
+    ringScaled = ringStructure*aScalarStability/numNeighbors;
+    
     Ahat = zeros(n*(maxDelay+1));
-    Ahat(1:n,1:n) = aScalarStability;
+    Ahat(1:n,1:n) = ringScaled;
     Ahat(1:(end-n),n+1:end) = aStack;
     % Build B or C, depending on case
     bcStack = [];
@@ -64,7 +69,7 @@ for delInd = 1:maxDelay
 end
 
 %% Make summary figure
-figure('Position',[315   279   685   519]);
+figure;
 
 plot(1:maxDelay, allCost,'ko-','LineWidth',2)
 hold on
