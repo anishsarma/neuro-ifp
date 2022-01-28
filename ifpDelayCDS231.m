@@ -5,21 +5,32 @@ n=1; % Number of states (start with scalar)
 dummyI=eye(n);
 % Check delays up to this many steps
 maxDelay = 20;
-aScalarStability=1.1;
+aScalarStability=1.1; % Max eigenvalue of the discrete-time ring
+delaySweep = 0:maxDelay;
+
+
+% Initialize figure 
+hold off; % to allow comparison of different n or a, start off 
 
 % Choose one of these:
 problemDef = 'State Fdbk And Act Delay';
 % problemDef = 'Full Ctrl And Sense Delay';
 
+
 %% Sweep through different delays
 zeroRows = zeros(n,(maxDelay-2)*n);
 if isempty(zeroRows); zeroRows = []; end
-allCost = zeros(1,maxDelay);
-for delInd = 1:maxDelay
+allCost = zeros(1,length(delaySweep));
+for delInd = 1:length(delaySweep)
+    delStep = delaySweep(delInd);
     % Build A-hat
     aStack = [];
     for stackInd = 1:maxDelay
+        if delStep == 0
+        aStack = blkdiag(aStack,dummyI*0);
+        else
         aStack = blkdiag(aStack,dummyI);
+        end
     end
     ringTmp = dummyI(:,[2:n 1]);
     ringStructure=(dummyI+ringTmp+ringTmp');
@@ -32,22 +43,31 @@ for delInd = 1:maxDelay
     % Build B or C, depending on case
     bcStack = [];
     for stackInd = 1:maxDelay
-        if stackInd == delInd
+        if stackInd == delStep
             isActive = 1;
         else
             isActive = 0;
         end
         bcStack = blkdiag(bcStack,dummyI*isActive);
     end
-    BC = [zeros(n,n*maxDelay);bcStack];
-    
+    if delStep == 0
+        BC = eye(size(Ahat,1));
+    else
+        BC = [zeros(n,n*maxDelay);bcStack];
+
+    end
     % State Costs / State Disturbance (IFP States are Free/Perfect)
     QW=blkdiag(dummyI,bcStack*0); 
     % Control Costs / Estimator Noise (IFP States are Free/Perfect)
-    RN=eps*eye(size(QW)-n);
+    RN=eps*eye(size(BC,2));
     % Solve a Riccati equation to get K
     K = dlqr(Ahat,BC,QW,RN);
 
+    
+    % We now have all the matrices we need.
+    % If you wanted to "knock down" IFPs by some scaling factor, 
+    % you could do that here.
+    
     switch problemDef
         case 'State Fdbk And Act Delay'
             B = BC;
@@ -65,13 +85,20 @@ for delInd = 1:maxDelay
 
     J = dlyap(Acl,QW);
     
-    allCost(delInd) = ones(1,size(Ahat,1))*J*ones(size(Ahat,1),1);
+    % The ones of the impulse vector define the states for which
+    % disturbances are allowed to enter the system. If only the first n
+    % states are allowed, then the plant can be disturbed while the
+    % controller is delayed but internally noiseless.
+    impvec = zeros(1,size(Ahat,1));
+    impvec(1:n) = 1;
+    allCost(delInd) = impvec*J*impvec';
 end
 
 %% Make summary figure
-figure;
 
-plot(1:maxDelay, allCost,'ko-','LineWidth',2)
+% figure; % Might uncomment this depending on how you do your tests
+
+plot(0:(maxDelay), allCost,'ko-','LineWidth',2)
 hold on
 set(gca,'Ycolor','k')
 
@@ -81,5 +108,4 @@ xlabel('Delay Steps')
 title(problemDef)
 
 set(gca,'FontSize',16)
-axis square
 
